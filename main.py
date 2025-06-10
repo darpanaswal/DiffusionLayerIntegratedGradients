@@ -4,11 +4,11 @@ import csv
 import torch
 from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 
-del model
-del tokenizer
-gc.collect()
-torch.cuda.empty_cache()
-torch.cuda.ipc_collect()
+# del model
+# del tokenizer
+# gc.collect()
+# torch.cuda.empty_cache()
+# torch.cuda.ipc_collect()
 
 
 model_path = "Dream-org/Dream-v0-Instruct-7B"
@@ -43,112 +43,54 @@ def create_baseline_input(x_t, mask_token_id, original_length):
     baseline[:, original_length:] = mask_token_id
     return baseline
 
-
-def compute_dlig_at_timestep(step, x_t, logits, mask_token_id, original_length):
-    """
-    Compute DLIG scores for time-step t - FIXED VERSION
-    """
+def compute_dlig_at_timestep(step, x_t, logits, mask_token_id, original_length, attention_mask):
     try:
-        # Create baseline input (more masked than current x_t)
         x_prime_t = create_baseline_input(x_t, mask_token_id, original_length)
-        
-        # Get embeddings for both inputs (this is where we should interpolate)
-        with torch.no_grad():
-            # Get embedding layer
-            embed_layer = model.model.embed_tokens
-            
-            # Convert to embeddings (continuous space)
-            x_t_embeds = embed_layer(x_t)  # [batch, seq_len, hidden_dim]
-            x_prime_t_embeds = embed_layer(x_prime_t)  # [batch, seq_len, hidden_dim]
-        
+        real_embeds = model.model.embed_tokens(x_t)
+        baseline_embeds = model.model.embed_tokens(x_prime_t)
+
         accumulated_gradients = None
-        
+
         for k in range(1, integration_steps + 1):
             alpha_k = k / integration_steps
-            
-            # Interpolate in EMBEDDING space, not token space
-            x_interpolated_embeds = x_prime_t_embeds + alpha_k * (x_t_embeds - x_prime_t_embeds)
-            x_interpolated_embeds.requires_grad_(True)
-            
-            # Clear gradients
+            interpolated_embeds = baseline_embeds + alpha_k * (real_embeds - baseline_embeds)
+            interpolated_embeds.requires_grad_()
+
             model.zero_grad(set_to_none=True)
-            
-            # Forward pass with interpolated embeddings
-            # We need to manually pass through the model starting from embeddings
-            attention_mask = torch.ones_like(x_t)  # Full attention mask
-            
-            # Get the model's forward pass starting from embeddings
-            # This is model-specific - you may need to adjust based on your model architecture
-            hidden_states = x_interpolated_embeds
-            
-            # Apply position embeddings if needed
-            if hasattr(model.model, 'embed_positions'):
-                positions = torch.arange(hidden_states.size(1), device=hidden_states.device).unsqueeze(0)
-                hidden_states = hidden_states + model.model.embed_positions(positions)
-            
-            # Pass through transformer layers
-            for layer in model.model.layers:
-                hidden_states = layer(hidden_states, attention_mask=attention_mask)[0]
-            
-            # Apply final layer norm
-            if hasattr(model.model, 'norm'):
-                hidden_states = model.model.norm(hidden_states)
-            
-            # Get logits
-            interpolated_logits = model.lm_head(hidden_states)
-            
-            # Define a better target function
-            # Option 1: Use the next token prediction loss
-            if step < interpolated_logits.size(1) - 1:
-                target_token_id = x_t[0, step + 1]  # Next token to predict
-                target_logit = interpolated_logits[0, step, target_token_id]
-            else:
-                # Option 2: Use the maximum logit at the last position
-                target_logit = interpolated_logits[0, -1, :].max()
-            
+
+            outputs = model(inputs_embeds=interpolated_embeds, attention_mask=attention_mask)
+            logits = outputs.logits
+            logits = torch.cat([logits[:, :1], logits[:, :-1]], dim=1)
+            target_logit = logits[0, -1, :].max()
             if target_logit.requires_grad:
                 target_logit.backward(retain_graph=True)
-                
-                # Get gradient w.r.t. the hooked layer
-                if target_layer['output'].grad is not None:
-                    current_grad = target_layer['output'].grad.clone()
-                    
-                    if accumulated_gradients is None:
-                        accumulated_gradients = current_grad
-                    else:
-                        accumulated_gradients += current_grad
-        
+                grad = interpolated_embeds.grad.clone()
+                if accumulated_gradients is None:
+                    accumulated_gradients = grad
+                else:
+                    accumulated_gradients += grad
+
         # Average the accumulated gradients
         if accumulated_gradients is not None:
             avg_gradients = accumulated_gradients / integration_steps
-            
+
             # Get activations for real input and baseline
             model.zero_grad(set_to_none=True)
-            attention_mask = torch.ones_like(x_t)
-            real_logits = model(x_t, attention_mask=attention_mask).logits
-            h_real = target_layer['output'].clone()
-            
-            model.zero_grad(set_to_none=True)
-            baseline_logits = model(x_prime_t, attention_mask=attention_mask).logits
-            h_baseline = target_layer['output'].clone()
-            
-            # Compute DLIG: (h_real - h_baseline) ⊙ avg_gradients
+            h_real = model.model.embed_tokens(x_t).detach()
+            h_baseline = model.model.embed_tokens(x_prime_t).detach()
+
             activation_diff = h_real - h_baseline
             dlig_raw = activation_diff * avg_gradients
-            
-            # Focus only on original input tokens
+
             input_dlig = dlig_raw[:, :original_length, :].detach().cpu()
-            
-            # Aggregate across embedding dimension to get per-token scores
-            token_dlig_scores = input_dlig.norm(dim=-1)  # Shape: [1, input_len]
-            
+            token_dlig_scores = input_dlig.norm(dim=-1)
+
             return {
                 'step': step,
-                'token_scores': token_dlig_scores,      # [1, input_len] - main result
-                'full_dlig': input_dlig,               # [1, input_len, hidden_dim] - detailed
+                'token_scores': token_dlig_scores,
+                'full_dlig': input_dlig,
                 'activation_diff_norm': activation_diff[:, :original_length, :].norm(dim=-1).detach().cpu()
             }
-    
     except Exception as e:
         print(f"DLIG computation failed at step {step}: {e}")
         return None
@@ -160,7 +102,7 @@ def generation_logits_hook_func(step, x, logits):
         mask_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
         
         # Compute DLIG for this time-step
-        dlig_result = compute_dlig_at_timestep(step, x, logits, mask_token_id, original_input_length)
+        dlig_result = compute_dlig_at_timestep(step, x, logits, mask_token_id, original_input_length, attention_mask)
         
         if dlig_result is not None:
             dlig_scores.append(dlig_result)
