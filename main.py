@@ -43,39 +43,68 @@ def create_baseline_input(x_t, mask_token_id, original_length):
     baseline[:, original_length:] = mask_token_id
     return baseline
 
+
 def compute_dlig_at_timestep(step, x_t, logits, mask_token_id, original_length):
     """
-    Compute DLIG scores for time-step t
+    Compute DLIG scores for time-step t - FIXED VERSION
     """
     try:
         # Create baseline input (more masked than current x_t)
         x_prime_t = create_baseline_input(x_t, mask_token_id, original_length)
         
-        # We need to compute integrated gradients along the path from x'_t to x_t
-        # This requires multiple forward passes with interpolated inputs
+        # Get embeddings for both inputs (this is where we should interpolate)
+        with torch.no_grad():
+            # Get embedding layer
+            embed_layer = model.model.embed_tokens
+            
+            # Convert to embeddings (continuous space)
+            x_t_embeds = embed_layer(x_t)  # [batch, seq_len, hidden_dim]
+            x_prime_t_embeds = embed_layer(x_prime_t)  # [batch, seq_len, hidden_dim]
         
         accumulated_gradients = None
         
         for k in range(1, integration_steps + 1):
             alpha_k = k / integration_steps
             
-            # Interpolated input: x'_t + alpha_k * (x_t - x'_t)
-            x_interpolated = x_prime_t + alpha_k * (x_t - x_prime_t)
-            x_interpolated = x_interpolated.long()  # Ensure integer token IDs
+            # Interpolate in EMBEDDING space, not token space
+            x_interpolated_embeds = x_prime_t_embeds + alpha_k * (x_t_embeds - x_prime_t_embeds)
+            x_interpolated_embeds.requires_grad_(True)
             
             # Clear gradients
             model.zero_grad(set_to_none=True)
             
-            # Forward pass with interpolated input
-            # We need to call the model directly to get activations
-            attention_mask = "full"  # Simplified for this example
-            tok_idx = None
+            # Forward pass with interpolated embeddings
+            # We need to manually pass through the model starting from embeddings
+            attention_mask = torch.ones_like(x_t)  # Full attention mask
             
-            interpolated_logits = model(x_interpolated, attention_mask, tok_idx).logits
-            interpolated_logits = torch.cat([interpolated_logits[:,:1], interpolated_logits[:, :-1]], dim=1)
+            # Get the model's forward pass starting from embeddings
+            # This is model-specific - you may need to adjust based on your model architecture
+            hidden_states = x_interpolated_embeds
             
-            # Target function F: use the max logit at the last position as target
-            target_logit = interpolated_logits[0, -1, :].max()
+            # Apply position embeddings if needed
+            if hasattr(model.model, 'embed_positions'):
+                positions = torch.arange(hidden_states.size(1), device=hidden_states.device).unsqueeze(0)
+                hidden_states = hidden_states + model.model.embed_positions(positions)
+            
+            # Pass through transformer layers
+            for layer in model.model.layers:
+                hidden_states = layer(hidden_states, attention_mask=attention_mask)[0]
+            
+            # Apply final layer norm
+            if hasattr(model.model, 'norm'):
+                hidden_states = model.model.norm(hidden_states)
+            
+            # Get logits
+            interpolated_logits = model.lm_head(hidden_states)
+            
+            # Define a better target function
+            # Option 1: Use the next token prediction loss
+            if step < interpolated_logits.size(1) - 1:
+                target_token_id = x_t[0, step + 1]  # Next token to predict
+                target_logit = interpolated_logits[0, step, target_token_id]
+            else:
+                # Option 2: Use the maximum logit at the last position
+                target_logit = interpolated_logits[0, -1, :].max()
             
             if target_logit.requires_grad:
                 target_logit.backward(retain_graph=True)
@@ -95,11 +124,12 @@ def compute_dlig_at_timestep(step, x_t, logits, mask_token_id, original_length):
             
             # Get activations for real input and baseline
             model.zero_grad(set_to_none=True)
-            real_logits = model(x_t, attention_mask, tok_idx).logits
+            attention_mask = torch.ones_like(x_t)
+            real_logits = model(x_t, attention_mask=attention_mask).logits
             h_real = target_layer['output'].clone()
             
             model.zero_grad(set_to_none=True)
-            baseline_logits = model(x_prime_t, attention_mask, tok_idx).logits
+            baseline_logits = model(x_prime_t, attention_mask=attention_mask).logits
             h_baseline = target_layer['output'].clone()
             
             # Compute DLIG: (h_real - h_baseline) ⊙ avg_gradients
