@@ -123,7 +123,7 @@ def compute_dlig_at_timestep(step, x_t, logits, mask_token_id, original_length):
         print(f"DLIG computation failed at step {step}: {e}")
         return None
 
-  def generation_logits_hook_func(step, x, logits):
+def generation_logits_hook_func(step, x, logits):
     global original_input_length
     
     if step is not None and original_input_length is not None:
