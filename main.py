@@ -1,6 +1,7 @@
 import gc
 import os
 import csv
+import json
 import torch
 import traceback
 from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
@@ -22,9 +23,11 @@ target_layer = dict()
 
 def capture_activations(module, inp, out):
     out = out if isinstance(out, torch.Tensor) else out[0]
-    out = out.detach().clone().requires_grad_(True)
+    if not out.requires_grad:
+        out.requires_grad_()
+    out.retain_grad()
     target_layer['output'] = out
-    print(f"[DEBUG] Hooked layer output shape: {out.shape}")
+    print(f"[DEBUG] Hooked layer output shape: {out.shape if isinstance(out, torch.Tensor) else type(out)}")
 
 hooked_layer = eval(f"model.{layer_name}")
 hook_handle = hooked_layer.register_forward_hook(capture_activations)
@@ -34,9 +37,9 @@ original_input_length = None
 integration_steps = 20  # Number of integration steps (m in the formula)
 
 def create_baseline_input(x_t, mask_token_id, original_length):
-    # x_t: [1, curr_len]
     baseline = x_t.clone()
-    baseline[:, original_length:] = mask_token_id  # mask everything after the original prompt
+    # Mask all original tokens, creating meaningful differences.
+    baseline[:, :original_length] = mask_token_id
     return baseline
 
 def compute_dlig_at_timestep(step, x_t, logits, mask_token_id, original_length, attention_mask):
@@ -48,56 +51,48 @@ def compute_dlig_at_timestep(step, x_t, logits, mask_token_id, original_length, 
         curr_len = x_t.shape[1]  # current full sequence length, including generated tokens
         x_prime_t = create_baseline_input(x_t, mask_token_id, original_length)
 
-        with torch.no_grad():
-            model(inputs_embeds=model.model.embed_tokens(x_t), attention_mask=attention_mask)
-            h_real = target_layer['output'].detach()
-        
-            model(inputs_embeds=model.model.embed_tokens(x_prime_t), attention_mask=attention_mask)
-            h_baseline = target_layer['output'].detach()
+        real_embeds = model.model.embed_tokens(x_t)         # [1, curr_len, dim]
+        baseline_embeds = model.model.embed_tokens(x_prime_t)  # [1, curr_len, dim]
 
-        accumulated_gradients = None
+        accumulated_gradients = torch.zeros_like(real_embeds)
 
         model.train()  # enable grads
 
         for k in range(1, integration_steps + 1):
             alpha_k = k / integration_steps
-            interpolated_activations = h_baseline + alpha_k * (h_real - h_baseline)
-            interpolated_activations = interpolated_activations.detach().clone().requires_grad_(True)
-        
-            def replace_hook(_module, _input):
-                return interpolated_activations
-        
-            hook_handle.remove()
-            dummy_hook = hooked_layer.register_forward_hook(lambda m, i, o: interpolated_activations)
-        
+            
+            # Fresh computation each time (detach from previous graph explicitly)
+            interpolated_embeds = (baseline_embeds + alpha_k * (real_embeds - baseline_embeds)).detach().clone()
+            interpolated_embeds.requires_grad_(True)
+
             model.zero_grad(set_to_none=True)
-            outputs = model(inputs_embeds=model.model.embed_tokens(x_t), attention_mask=attention_mask)
+            outputs = model(inputs_embeds=interpolated_embeds, attention_mask=attention_mask)
             logits = outputs.logits
+
             target_logit = logits[0, -1, :].max()
-            target_logit.backward(retain_graph=True)
-        
-            grad = interpolated_activations.grad.clone()
-            accumulated_gradients = grad if accumulated_gradients is None else accumulated_gradients + grad
-        
-            dummy_hook.remove()
-            hook_handle = hooked_layer.register_forward_hook(capture_activations)
 
-        model.eval()
+            # Retain graph explicitly to avoid RuntimeError
+            target_logit.backward(retain_graph=False)  # no need to retain graph now, as tensors are fresh each iteration
 
-        if accumulated_gradients is not None:
-            avg_gradients = accumulated_gradients / integration_steps
-            activation_diff = h_real - h_baseline
-            dlig_raw = activation_diff * avg_gradients
+            if interpolated_embeds.grad is not None:
+                accumulated_gradients += interpolated_embeds.grad.clone()
+            else:
+                print(f"[WARN] Gradients not found at step {k}")
 
-            # Only for reporting: focus on the prompt tokens
-            input_dlig = dlig_raw[:, :original_length, :].detach().cpu()
-            token_dlig_scores = input_dlig.norm(dim=-1)
-            return {
-                'step': step,
-                'token_scores': token_dlig_scores,
-                'full_dlig': input_dlig,
-                'activation_diff_norm': activation_diff[:, :original_length, :].norm(dim=-1).detach().cpu()
-            }
+        avg_gradients = accumulated_gradients / integration_steps
+        activation_diff = real_embeds - baseline_embeds
+        activation_diff_norm = activation_diff.norm()
+        print(f"Activation diff norm: {activation_diff_norm}")
+        dlig_raw = activation_diff * avg_gradients
+
+        input_dlig = dlig_raw[:, :original_length, :].detach().cpu()
+        token_dlig_scores = input_dlig.norm(dim=-1)
+        return {
+            'step': step,
+            'token_scores': token_dlig_scores,
+            'full_dlig': input_dlig,
+            'activation_diff_norm': activation_diff[:, :original_length, :].norm(dim=-1).detach().cpu()
+        }
     except Exception as e:
         import traceback
         print(f"DLIG computation failed at step {step}: {e}")
@@ -200,7 +195,7 @@ output = grad_model.diffusion_generate_with_grad(
     max_new_tokens=64,
     output_history=True,
     return_dict_in_generate=True,
-    steps=32,
+    steps=3,
     generation_logits_hook_func=generation_logits_hook_func
 )
 
@@ -238,27 +233,31 @@ csv_dir = "./attribution_csv"
 os.makedirs(csv_dir, exist_ok=True)
 csv_filename = os.path.join(csv_dir, "dlig_attribution_scores.csv")
 
-# Get tokens once (they should be same for each step)
+fieldnames = ['step', 'prompt', 'token_scores']
 tokens = tokenizer.convert_ids_to_tokens(input_ids[0])
 
-fieldnames = ['step', 'token_idx', 'token', 'score', 'flattened_score']
-
-with open(csv_filename, "w", newline='') as csvfile:
+with open(csv_filename, "w", newline='', encoding='utf-8') as csvfile:
     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
     writer.writeheader()
+
     for dlig in dlig_scores:
         step = dlig['step']
-        # full_dlig: [1, input_len, hidden_dim], remove batch dim
         full_dlig = dlig['full_dlig'][0]  # shape: (input_len, hidden_dim)
+
+        token_scores_dict = {}
         for token_idx, token in enumerate(tokens):
             raw_score_vec = full_dlig[token_idx].tolist()
             flattened_score = float(torch.tensor(raw_score_vec).mean())
-            writer.writerow({
-                'step': step,
-                'token_idx': token_idx,
-                'token': token,
-                'score': raw_score_vec,               # stored as list in CSV; can be loaded as string-eval later
+            
+            token_scores_dict[token] = {
+                'full_score': raw_score_vec,
                 'flattened_score': flattened_score
-            })
+            }
 
-print(f"Attribution scores for each step/token written to: {csv_filename}")
+        writer.writerow({
+            'step': step,
+            'prompt': tokenizer.decode(input_ids[0], skip_special_tokens=True),
+            'token_scores': json.dumps(token_scores_dict)  # Serialize dictionary clearly
+        })
+
+print(f"Revised attribution scores written to: {csv_filename}")
