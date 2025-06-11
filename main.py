@@ -22,11 +22,9 @@ target_layer = dict()
 
 def capture_activations(module, inp, out):
     out = out if isinstance(out, torch.Tensor) else out[0]
-    if not out.requires_grad:
-        out.requires_grad_()
-    out.retain_grad()
+    out = out.detach().clone().requires_grad_(True)
     target_layer['output'] = out
-    print(f"[DEBUG] Hooked layer output shape: {out.shape if isinstance(out, torch.Tensor) else type(out)}")
+    print(f"[DEBUG] Hooked layer output shape: {out.shape}")
 
 hooked_layer = eval(f"model.{layer_name}")
 hook_handle = hooked_layer.register_forward_hook(capture_activations)
@@ -50,8 +48,12 @@ def compute_dlig_at_timestep(step, x_t, logits, mask_token_id, original_length, 
         curr_len = x_t.shape[1]  # current full sequence length, including generated tokens
         x_prime_t = create_baseline_input(x_t, mask_token_id, original_length)
 
-        real_embeds = model.model.embed_tokens(x_t)         # [1, curr_len, dim]
-        baseline_embeds = model.model.embed_tokens(x_prime_t)  # [1, curr_len, dim]
+        with torch.no_grad():
+            model(inputs_embeds=model.model.embed_tokens(x_t), attention_mask=attention_mask)
+            h_real = target_layer['output'].detach()
+        
+            model(inputs_embeds=model.model.embed_tokens(x_prime_t), attention_mask=attention_mask)
+            h_baseline = target_layer['output'].detach()
 
         accumulated_gradients = None
 
@@ -59,28 +61,31 @@ def compute_dlig_at_timestep(step, x_t, logits, mask_token_id, original_length, 
 
         for k in range(1, integration_steps + 1):
             alpha_k = k / integration_steps
-            interpolated_embeds = baseline_embeds + alpha_k * (real_embeds - baseline_embeds)
-            interpolated_embeds = interpolated_embeds.detach().clone()
-            interpolated_embeds.requires_grad_(True)
-            interpolated_embeds = interpolated_embeds.to(dtype=torch.bfloat16)
-
+            interpolated_activations = h_baseline + alpha_k * (h_real - h_baseline)
+            interpolated_activations = interpolated_activations.detach().clone().requires_grad_(True)
+        
+            def replace_hook(_module, _input):
+                return interpolated_activations
+        
+            hook_handle.remove()
+            dummy_hook = hooked_layer.register_forward_hook(lambda m, i, o: interpolated_activations)
+        
             model.zero_grad(set_to_none=True)
-            outputs = model(inputs_embeds=interpolated_embeds, attention_mask=attention_mask)
+            outputs = model(inputs_embeds=model.model.embed_tokens(x_t), attention_mask=attention_mask)
             logits = outputs.logits
             target_logit = logits[0, -1, :].max()
             target_logit.backward(retain_graph=True)
-            grad = interpolated_embeds.grad.clone()
-            if accumulated_gradients is None:
-                accumulated_gradients = grad
-            else:
-                accumulated_gradients += grad
+        
+            grad = interpolated_activations.grad.clone()
+            accumulated_gradients = grad if accumulated_gradients is None else accumulated_gradients + grad
+        
+            dummy_hook.remove()
+            hook_handle = hooked_layer.register_forward_hook(capture_activations)
 
         model.eval()
 
         if accumulated_gradients is not None:
             avg_gradients = accumulated_gradients / integration_steps
-            h_real = real_embeds.detach()
-            h_baseline = baseline_embeds.detach()
             activation_diff = h_real - h_baseline
             dlig_raw = activation_diff * avg_gradients
 
