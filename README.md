@@ -73,9 +73,9 @@ python main.py
 ### Changing the Input Message
 #### Edit the messages list in `main.py`:
 
-```messages = [
+```pythonmessages = [
     {"role": "user", "content": "Your custom prompt here"}
-]```
+]
 
 ### Adjusting DLIG Parameters
 #### Modify parameters in `config.py`:
@@ -86,7 +86,7 @@ python main.py
 
 ### Using Different Layers
 #### Change 'LAYER_NAME' in `config.py`:
-```LAYER_NAME = 'model.layers.10'  # Example for layer 10```
+```pythonLAYER_NAME = 'model.layers.10'  # Example for layer 10```
 
 ## Output
 ### The script generates:
