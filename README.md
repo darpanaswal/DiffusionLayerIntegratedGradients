@@ -4,20 +4,20 @@ This project implements DLIG (Diffusion Language Integrated Gradients) attributi
 
 ## Project Structure
 
-├── config.py # Configuration settings
-├── main.py # Main execution script
-├── requirements.txt # Dependencies
-├── README.md # This file
-├── models/ # Model management
-│ ├── init.py
-│ └── model_manager.py # Model loading and management
-├── attribution/ # Attribution methods
-│ ├── init.py
-│ ├── dlig_attribution.py # DLIG attribution implementation
-│ └── hook_manager.py # Hook management for activation capture
-└── utils/ # Utility functions
-├── init.py
-└── data_processor.py # Input processing and results export
+├── config.py                  # Configuration settings  
+├── main.py                    # Main execution script  
+├── requirements.txt           # Dependencies  
+├── README.md                  # This file  
+├── models/                    # Model management  
+│   ├── __init__.py  
+│   └── model_manager.py       # Model loading and management  
+├── attribution/               # Attribution methods  
+│   ├── __init__.py  
+│   ├── dlig_attribution.py    # DLIG attribution implementation  
+│   └── hook_manager.py        # Hook management for activation capture  
+├── utils/                     # Utility functions  
+│   ├── __init__.py  
+│   └── data_processor.py      # Input processing and results export  
 
 ## Module Descriptions
 
@@ -73,9 +73,9 @@ python main.py
 ### Changing the Input Message
 #### Edit the messages list in `main.py`:
 
-messages = [
+```messages = [
     {"role": "user", "content": "Your custom prompt here"}
-]
+]```
 
 ### Adjusting DLIG Parameters
 #### Modify parameters in `config.py`:
@@ -86,7 +86,7 @@ messages = [
 
 ### Using Different Layers
 #### Change 'LAYER_NAME' in `config.py`:
-LAYER_NAME = 'model.layers.10'  # Example for layer 10
+```LAYER_NAME = 'model.layers.10'  # Example for layer 10```
 
 ## Output
 ### The script generates:
