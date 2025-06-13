@@ -59,7 +59,7 @@ Main execution script that orchestrates all components.
 1. Install dependencies:
 pip install -r requirements.txt
 
-2. Update the configuration in config.py:
+2. Update the configuration in 'config.py':
 
 #### Set your model directory
 MODEL_PATH = "your_model_directory"
@@ -71,28 +71,28 @@ python main.py
 
 ## Customization
 ### Changing the Input Message
-#### Edit the messages list in main.py:
+#### Edit the messages list in 'main.py':
 
 messages = [
     {"role": "user", "content": "Your custom prompt here"}
 ]
 
 ### Adjusting DLIG Parameters
-#### Modify parameters in config.py:
+#### Modify parameters in 'config.py':
 
 - INTEGRATION_STEPS: Number of integration steps
 - MAX_NEW_TOKENS: Maximum tokens to generate
 - GENERATION_STEPS: Number of generation steps
 
 ### Using Different Layers
-#### Change LAYER_NAME in config.py to target different model layers:
+#### Change 'LAYER_NAME' in 'config.py':
 LAYER_NAME = 'model.layers.10'  # Example for layer 10
 
 ## Output
 ### The script generates:
 
 - Console output with step-by-step attribution analysis
-- CSV file with detailed attribution scores in the attribution_csv directory
+- CSV file with detailed attribution scores in the '/attribution_csv' directory
 
 ## Error Handling
 The code includes comprehensive error handling:
