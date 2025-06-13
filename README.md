@@ -73,9 +73,10 @@ python main.py
 ### Changing the Input Message
 #### Edit the messages list in `main.py`:
 
-```pythonmessages = [
+`python
+messages = [
     {"role": "user", "content": "Your custom prompt here"}
-]
+]`
 
 ### Adjusting DLIG Parameters
 #### Modify parameters in `config.py`:
