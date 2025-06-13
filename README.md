@@ -1,6 +1,9 @@
-DLIG Attribution Analysis
+# DLIG Attribution Analysis
+
 This project implements DLIG (Diffusion Language Integrated Gradients) attribution analysis for language models. The code has been modularized into separate components for better maintainability and reusability.
-Project Structure
+
+## Project Structure
+
 ├── config.py                      # Configuration settings
 ├── main.py                        # Main execution script
 ├── requirements.txt               # Dependencies
@@ -15,59 +18,57 @@ Project Structure
 └── utils/                         # Utility functions
     ├── __init__.py
     └── data_processor.py          # Input processing and results export
-Module Descriptions
-config.py
+
+## Module Descriptions
+
+### config.py
 Contains all configuration settings including:
+- Model path and layer configuration
+- DLIG computation parameters
+- Generation parameters
+- Output settings
 
-Model path and layer configuration
-DLIG computation parameters
-Generation parameters
-Output settings
-
-models/model_manager.py
+### models/model_manager.py
 Handles model and tokenizer loading with:
+- `ModelManager`: Loads and manages the model and tokenizer
+- `GradientEnabledModel`: Wrapper for enabling gradient computation during generation
 
-ModelManager: Loads and manages the model and tokenizer
-GradientEnabledModel: Wrapper for enabling gradient computation during generation
-
-attribution/dlig_attribution.py
+### attribution/dlig_attribution.py
 Core DLIG attribution implementation:
+- `DLIGAttribution`: Main class for computing DLIG scores
+- Baseline input creation
+- Integrated gradients computation
+- Hook function for generation-time attribution
 
-DLIGAttribution: Main class for computing DLIG scores
-Baseline input creation
-Integrated gradients computation
-Hook function for generation-time attribution
-
-attribution/hook_manager.py
+### attribution/hook_manager.py
 Manages model hooks for activation capture:
+- `HookManager`: Registers and manages forward hooks
+- Activation capture and cleanup
 
-HookManager: Registers and manages forward hooks
-Activation capture and cleanup
-
-utils/data_processor.py
+### utils/data_processor.py
 Handles input/output processing:
+- `DataProcessor`: Input preparation and results analysis
+- CSV export functionality
+- Results visualization and analysis
 
-DataProcessor: Input preparation and results analysis
-CSV export functionality
-Results visualization and analysis
-
-main.py
+### main.py
 Main execution script that orchestrates all components.
-Usage
 
-Install dependencies:
+## Usage
 
-bashpip install -r requirements.txt
+1. Install dependencies:
+pip install -r requirements.txt
 
-Update the configuration in config.py:
+2. Update the configuration in config.py:
 
-Set MODEL_PATH to your model directory
-Adjust other parameters as needed
+# Set your model directory
+MODEL_PATH = "your_model_directory"
+# Adjust other parameters as needed
 
+3. Run the analysis:
 
-Run the analysis:
+python main.py
 
-bashpython main.py
 Customization
 Changing the Input Message
 Edit the messages list in main.py:
