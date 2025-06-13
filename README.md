@@ -57,17 +57,22 @@ Main execution script that orchestrates all components.
 ## Usage
 
 1. Install dependencies:
+```bash
 pip install -r requirements.txt
+```
 
-2. Update the configuration in `config.py`:
+3. Update the configuration in `config.py`:
 
-#### Set your model directory
+```python
+# Set your model directory
 MODEL_PATH = "your_model_directory"
-#### Adjust other parameters as needed
+# Adjust other parameters as needed
+```
 
 3. Run the analysis:
-
+```bash
 python main.py
+```
 
 ## Customization
 ### Changing the Input Message
@@ -82,9 +87,11 @@ messages = [
 ### Adjusting DLIG Parameters
 #### Modify parameters in `config.py`:
 
-- INTEGRATION_STEPS: Number of integration steps
-- MAX_NEW_TOKENS: Maximum tokens to generate
-- GENERATION_STEPS: Number of generation steps
+```python
+INTEGRATION_STEPS = 50     # Number of integration steps
+MAX_NEW_TOKENS = 50        # Maximum tokens to generate
+GENERATION_STEPS = 5       # Number of generation steps
+```
 
 ### Using Different Layers
 #### Change 'LAYER_NAME' in `config.py`:
