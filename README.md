@@ -61,22 +61,24 @@ pip install -r requirements.txt
 
 2. Update the configuration in config.py:
 
-# Set your model directory
+#### Set your model directory
 MODEL_PATH = "your_model_directory"
-# Adjust other parameters as needed
+#### Adjust other parameters as needed
 
 3. Run the analysis:
 
 python main.py
 
-Customization
-Changing the Input Message
-Edit the messages list in main.py:
-pythonmessages = [
+## Customization
+### Changing the Input Message
+#### Edit the messages list in main.py:
+
+messages = [
     {"role": "user", "content": "Your custom prompt here"}
 ]
-Adjusting DLIG Parameters
-Modify parameters in config.py:
+
+## Adjusting DLIG Parameters
+### Modify parameters in config.py:
 
 INTEGRATION_STEPS: Number of integration steps
 MAX_NEW_TOKENS: Maximum tokens to generate
