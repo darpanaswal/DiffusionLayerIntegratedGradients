@@ -77,39 +77,40 @@ messages = [
     {"role": "user", "content": "Your custom prompt here"}
 ]
 
-## Adjusting DLIG Parameters
-### Modify parameters in config.py:
+### Adjusting DLIG Parameters
+#### Modify parameters in config.py:
 
-INTEGRATION_STEPS: Number of integration steps
-MAX_NEW_TOKENS: Maximum tokens to generate
-GENERATION_STEPS: Number of generation steps
+- INTEGRATION_STEPS: Number of integration steps
+- MAX_NEW_TOKENS: Maximum tokens to generate
+- GENERATION_STEPS: Number of generation steps
 
-Using Different Layers
-Change LAYER_NAME in config.py to target different model layers:
-pythonLAYER_NAME = 'model.layers.10'  # Example for layer 10
-Output
-The script generates:
+### Using Different Layers
+#### Change LAYER_NAME in config.py to target different model layers:
+LAYER_NAME = 'model.layers.10'  # Example for layer 10
 
-Console output with step-by-step attribution analysis
-CSV file with detailed attribution scores in the attribution_csv directory
+## Output
+### The script generates:
 
-Error Handling
+- Console output with step-by-step attribution analysis
+- CSV file with detailed attribution scores in the attribution_csv directory
+
+## Error Handling
 The code includes comprehensive error handling:
 
-Model loading errors
-DLIG computation failures
-Hook management cleanup
-Memory management with garbage collection
+- Model loading errors
+- DLIG computation failures
+- Hook management cleanup
+- Memory management with garbage collection
 
-Requirements
+## Requirements
 
-Python 3.8+
-PyTorch 2.0+
-Transformers 4.30+
-CUDA-compatible GPU (recommended)
+- Python 3.8+
+- PyTorch 2.0+
+- Transformers 4.30+
+- CUDA-compatible GPU (recommended)
 
-Notes
+## Notes
 
-The code assumes a specific model architecture with model.embed_tokens and diffusion generation capabilities
+- The code assumes a specific model architecture with diffusion generation capabilities
 Memory usage can be significant during DLIG computation due to gradient retention
 The hook is automatically cleaned up after execution
