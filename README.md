@@ -1,25 +1,7 @@
 # DLIG Attribution Analysis
 
 This project implements DLIG (Diffusion Language Integrated Gradients) attribution analysis for language models. The code has been modularized into separate components for better maintainability and reusability.
-
-## Project Structure
-
-|── config.py                  
-|── main.py                    
-|── requirements.txt           
-|── README.md                  
-|── models/                    # Model management  
-|       |── __init__.py  
-|   |── download_model.py        
-|   └── model_manager.py       # Model loading and management  
-|── attribution/              
-|   |── __init__.py  
-|   |── dlig_attribution.py    # DLIG attribution implementation  
-|   └── hook_manager.py        # Hook management for activation capture  
-|── utils/                     
-|   |── __init__.py  
-|   └── data_processor.py     
-
+   
 ## Module Descriptions
 
 ### config.py
