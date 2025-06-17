@@ -80,13 +80,13 @@ GENERATION_STEPS = 5       # Number of generation steps
 ### Using Different Layers
 #### Change 'LAYER_NAME' in `config.py`:
 ```python
-LAYER_NAME = 'model.layers.10'  # Example for layer 10
+LAYER_NAME = 'model.layers[10]'  # Example for layer 10
 ```
 ## Output
 ### The script generates:
 
 - Console output with step-by-step attribution analysis
-- CSV file with detailed attribution scores in the `/attribution_csv` directory
+- CSV file with detailed attribution scores in the `/outputs` directory
 
 ## Error Handling
 The code includes comprehensive error handling:
