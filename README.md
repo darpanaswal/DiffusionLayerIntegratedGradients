@@ -9,7 +9,7 @@ This project implements DLIG (Diffusion Language Integrated Gradients) attributi
 |── requirements.txt           
 |── README.md                  
 |── models/                    # Model management  
-|   |── __init__.py  
+|       |── __init__.py  
 |   |── download_model.py        
 |   └── model_manager.py       # Model loading and management  
 |── attribution/              
