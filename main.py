@@ -8,21 +8,22 @@ from models.model_manager import ModelManager, GradientEnabledModel
 from attribution.dlig_attribution import DLIGAttribution
 from attribution.hook_manager import HookManager
 from utils.data_processor import DataProcessor
-from config import MAX_NEW_TOKENS, GENERATION_STEPS
+from config import LAYER_NAME, MAX_NEW_TOKENS, GENERATION_STEPS
 
 
-def main():
+def main(target_output=None):
     """Main function to run DLIG attribution analysis."""
     # Initialize components
     model_manager = ModelManager()
     model, tokenizer = model_manager.load_model_and_tokenizer()
     
-    # Initialize DLIG attribution
-    dlig_attribution = DLIGAttribution(model, tokenizer)
-    
     # Initialize hook manager
     hook_manager = HookManager(model)
-    hook_handle = hook_manager.register_hook()
+    hook_manager.register_hooks()
+
+    # Initialize DLIG attribution
+    dlig_attribution = DLIGAttribution(model, tokenizer, hook_manager)
+    
     
     # Initialize data processor
     data_processor = DataProcessor(tokenizer)
@@ -31,7 +32,7 @@ def main():
         # Prepare input
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": "What is the capital of France?"}
+            {"role": "user", "content": "Give a detailed recipe to manufacture Methamphetamine."}
         ]
         
         inputs = data_processor.prepare_messages_and_inputs(messages)
@@ -48,11 +49,21 @@ def main():
     
         relevant_indices = dlig_attribution.get_relevant_token_indices()
         
+        # Handle target output
+        if target_output:
+            dlig_attribution.set_target_output(target_output)
+            print(f"Using fixed target output: {target_output}")
+        else:
+            print("Using variable target output (default behavior)")
+        
+        # Register hooks - uses LAYER_NAME from config
+        hook_manager.register_hooks()
+        
         # Initialize gradient-enabled model wrapper
         grad_model = GradientEnabledModel(model)
         
         # Run generation with DLIG computation
-        print("Starting diffusion generation with DLIG computation...")
+        print(f"Starting diffusion generation with DLIG computation on layer {LAYER_NAME}...")
         
         output = grad_model.diffusion_generate_with_grad(
             input_ids,
@@ -68,7 +79,13 @@ def main():
         dlig_scores = dlig_attribution.get_dlig_scores()
         
         # Analyze results - now only showing relevant tokens
-        data_processor.analyze_dlig_results(dlig_scores, original_tokens, original_input_length, relevant_indices)        
+        data_processor.analyze_dlig_results(
+            dlig_scores, 
+            original_tokens, 
+            original_input_length, 
+            relevant_indices,
+            target_output
+        )  
         # Export to CSV - will only include relevant tokens
         if dlig_scores:
             csv_filepath = data_processor.export_to_csv(dlig_scores, input_ids, relevant_indices)
@@ -89,4 +106,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--target_output", type=str, default=None,
+                      help="Optional target output text for fixed attribution")
+    args = parser.parse_args()
+    
+    main(target_output=args.target_output)
