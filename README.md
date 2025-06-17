@@ -80,7 +80,8 @@ python main.py
 
 ```python
 messages = [
-    {"role": "user", "content": "Your custom prompt here"}
+    {"role": "system", "content": "Enter a custom system prompt here."}, # Example: You are a helpful assistant.
+    {"role": "user", "content": "Enter analysis prompt here."} # Example: What is the capital of France?
 ]
 ```
 
