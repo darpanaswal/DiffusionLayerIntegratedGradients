@@ -108,3 +108,4 @@ The code includes comprehensive error handling:
 - The code assumes a specific model architecture with diffusion generation capabilities
 - Memory usage can be significant during DLIG computation due to gradient retention
 - The hook is automatically cleaned up after execution
+- All descriptions are generated with AI assistance
