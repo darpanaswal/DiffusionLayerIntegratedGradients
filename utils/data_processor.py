@@ -32,9 +32,11 @@ class DataProcessor:
         
         return original_input_length, original_tokens
     
-    def analyze_dlig_results(self, dlig_scores, original_tokens, original_input_length, relevant_indices):
+    def analyze_dlig_results(self, dlig_scores, original_tokens, original_input_length, relevant_indices, target_output=None):
         """Analyze and print DLIG results."""
         print(f"\nDLIG Analysis Complete!")
+        if target_output:
+            print(f"Target output used: {target_output}")
         print(f"Total time-steps with DLIG computed: {len(dlig_scores)}")
 
         if not dlig_scores:
